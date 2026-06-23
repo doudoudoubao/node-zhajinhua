@@ -1,0 +1,41 @@
+# Nginx 反向代理示例：对外提供 HTTPS，内部转发到本机 25500 端口。
+# 已针对联机用的 SSE（Server-Sent Events）做优化，否则实时推送会被缓冲卡住。
+#
+# 用法：
+#   1. 把 game.example.com 改成你自己的域名（需先把域名解析到 VPS 公网 IP）
+#   2. sudo cp deploy/nginx.conf.example /etc/nginx/conf.d/zhajinhua.conf
+#   3. sudo nginx -t && sudo systemctl reload nginx
+#   4. 用 certbot 申请证书： sudo certbot --nginx -d game.example.com
+#      （certbot 会自动补全 ssl 配置并设置 80→443 跳转）
+
+server {
+    listen 80;
+    server_name game.example.com;
+
+    # SSE 实时长连接（房间状态 / 全局通知）：关闭缓冲、延长超时
+    location ~ ^/zhajinhua/api/(room/stream|notify/stream) {
+        proxy_pass http://127.0.0.1:25500;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;          # 关键：不缓冲，立即下发事件
+        proxy_cache off;
+        chunked_transfer_encoding off;
+        proxy_read_timeout 1h;        # 长连接保持
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:25500;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
+
+# 申请证书后，certbot 会自动添加 443 server 块（同样需要把上面的 SSE location 一并保留）。

@@ -1,0 +1,26 @@
+{
+  "name": "node-zhajinhua",
+  "version": "1.0.0",
+  "description": "炸金花（三张）在线棋牌网页游戏：单机对战 AI + 真人联机（好友 / 密码房 / 观战 / 聊天 / 金币 / 排行榜）。仅用 Node.js 内置模块，零外部依赖，开箱即用，适合 VPS 自托管。",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/zhajinhua.test.js && node test/zhajinhua-online.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "zhajinhua",
+    "炸金花",
+    "三张",
+    "poker",
+    "card-game",
+    "棋牌",
+    "online",
+    "sse",
+    "nodejs"
+  ],
+  "license": "MIT"
+}

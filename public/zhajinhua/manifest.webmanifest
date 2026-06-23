@@ -1,0 +1,20 @@
+{
+  "name": "炸金花 · 在线棋牌",
+  "short_name": "炸金花",
+  "description": "经典炸金花（三张）网页棋牌：单机 AI + 真人联机，好友 / 密码房 / 观战 / 聊天 / 金币。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a1410",
+  "theme_color": "#0a1410",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230f4628'/%3E%3Ctext y='.9em' font-size='80' x='10'%3E%F0%9F%83%8F%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

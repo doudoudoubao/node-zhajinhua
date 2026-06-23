@@ -1,0 +1,34 @@
+# systemd 服务单元：让炸金花服务后台常驻并开机自启
+#
+# 安装步骤：
+#   1. 把项目放到 /opt/node-zhajinhua（或自行修改下面的 WorkingDirectory）
+#   2. sudo cp deploy/zhajinhua.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now zhajinhua
+#   5. sudo systemctl status zhajinhua    # 查看状态
+#      journalctl -u zhajinhua -f          # 查看实时日志
+
+[Unit]
+Description=炸金花在线棋牌服务（node-zhajinhua）
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/node-zhajinhua
+ExecStart=/usr/bin/node /opt/node-zhajinhua/server.js
+Restart=always
+RestartSec=3
+# 监听端口（仅本机，建议由 Nginx 反向代理对外）
+Environment=PORT=25500
+Environment=HOST=127.0.0.1
+# 用户数据目录（注册/好友/金币/战绩）
+Environment=ZJH_DATA_DIR=/opt/node-zhajinhua/data
+# 以非 root 用户运行更安全（需先创建该用户，或改成你的用户名，并确保对数据目录有写权限）
+User=www-data
+Group=www-data
+# 一些基础安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
