@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>炸金花 · 在线棋牌</title>
+  <meta name="description" content="经典炸金花（三张）网页棋牌，支持单人对战 AI 与真人联机：好友、房间密码、观战、聊天，零依赖自托管。" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0a1410" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="炸金花" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>" />
+</head>
+<body>
+  <div class="bg-felt"></div>
+
+  <header class="topbar">
+    <div class="brand" id="brandHome">🃏 炸金花</div>
+    <nav class="topnav">
+      <a href="/">订阅转换</a>
+      <button class="ghost small" id="leaderboardBtn">🏆 排行榜</button>
+      <button class="ghost small" id="soundBtn" title="音效开关">🔊</button>
+      <span id="authArea" class="auth-area"></span>
+    </nav>
+  </header>
+
+  <!-- 通知 / 提示浮层 -->
+  <div id="toasts" class="toasts"></div>
+
+  <!-- 首页：选择模式 -->
+  <section id="home" class="screen panel">
+    <h2>选择模式</h2>
+    <div class="mode-cards">
+      <button class="mode-card" id="modeSingle">
+        <div class="mode-emoji">🤖</div>
+        <div class="mode-title">单机练习</div>
+        <div class="mode-desc">与 AI 机器人对战，无需登录，随时开局</div>
+      </button>
+      <button class="mode-card" id="modeOnline">
+        <div class="mode-emoji">🌐</div>
+        <div class="mode-title">联机对战</div>
+        <div class="mode-desc">和好友真人同桌 · 好友 / 密码房 / 观战 / 聊天</div>
+      </button>
+    </div>
+    <details class="rules">
+      <summary>规则说明（大众规则）</summary>
+      <ul>
+        <li>牌型从大到小：<b>豹子 &gt; 同花顺 &gt; 金花(同花) &gt; 顺子 &gt; 对子 &gt; 单张</b>。</li>
+        <li>顺子中 <b>A-2-3 最小</b>，<b>Q-K-A 最大</b>。</li>
+        <li><b>闷牌（蒙牌）</b>跟注 1 倍单注，<b>看牌</b>后跟注 / 比牌为 2 倍单注。</li>
+        <li>可<b>跟注 / 加注 / 比牌 / 弃牌</b>；只剩一人时赢得底池，达到回合上限则强制摊牌。</li>
+        <li><b>比牌平局</b>时主动比牌的一方判负。</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- 单机设置 -->
+  <section id="singleSetup" class="screen panel hidden">
+    <h2>单机设置</h2>
+    <div class="setup-grid">
+      <label>对手数量
+        <select id="botCount">
+          <option value="1">1 个</option>
+          <option value="2">2 个</option>
+          <option value="3" selected>3 个</option>
+          <option value="4">4 个</option>
+          <option value="5">5 个</option>
+        </select>
+      </label>
+      <label>底注
+        <select id="ante">
+          <option value="5">5</option>
+          <option value="10" selected>10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+      <label>初始筹码
+        <select id="startChips">
+          <option value="500">500</option>
+          <option value="1000" selected>1000</option>
+          <option value="2000">2000</option>
+          <option value="5000">5000</option>
+        </select>
+      </label>
+      <label>单注封顶
+        <select id="maxStake">
+          <option value="40">40</option>
+          <option value="80" selected>80</option>
+          <option value="160">160</option>
+          <option value="320">320</option>
+        </select>
+      </label>
+      <label>机器人难度
+        <select id="botDifficulty">
+          <option value="easy">新手</option>
+          <option value="normal" selected>普通</option>
+          <option value="hard">高手</option>
+        </select>
+      </label>
+    </div>
+    <div class="row-actions">
+      <button id="startSingleBtn" class="primary">🎲 开局</button>
+      <button class="ghost back-home">← 返回</button>
+    </div>
+  </section>
+
+  <!-- 联机大厅 -->
+  <section id="lobby" class="screen hidden">
+    <div class="lobby-grid">
+      <div class="panel">
+        <div class="result-head">
+          <h2>房间大厅</h2>
+          <div class="row-actions">
+            <button id="createRoomBtn" class="primary small">+ 创建房间</button>
+            <button id="refreshRoomsBtn" class="ghost small">⟳</button>
+            <button class="ghost small back-home">← 返回</button>
+          </div>
+        </div>
+        <div id="lobbyAuthHint" class="auth-hint hidden">请先登录后再进入联机大厅。</div>
+        <div class="join-by-id" id="joinById">
+          <input id="joinIdInput" type="text" placeholder="输入房间号" maxlength="12" />
+          <input id="joinPwInput" type="text" placeholder="密码(如有)" maxlength="16" />
+          <button id="joinIdBtn" class="ghost small">加入</button>
+        </div>
+        <div class="room-filter" id="roomFilter">
+          <input id="roomSearch" type="text" placeholder="🔍 搜索房名 / 房号" />
+          <select id="roomFilterSel">
+            <option value="all">全部房间</option>
+            <option value="open">有空位</option>
+            <option value="waiting">等待中</option>
+            <option value="playing">进行中</option>
+            <option value="public">仅公开</option>
+          </select>
+        </div>
+        <div id="roomList" class="room-list"></div>
+      </div>
+
+      <div class="panel friends-panel" id="friendsPanel">
+        <div class="result-head">
+          <h2>好友</h2>
+          <button id="addFriendBtn" class="ghost small">+ 加好友</button>
+        </div>
+        <div id="friendRequests" class="friend-requests"></div>
+        <div id="friendList" class="friend-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 牌桌（单机 / 联机共用，棋牌式圆桌） -->
+  <main id="table" class="screen hidden">
+    <div class="room-bar hidden" id="roomBar"></div>
+    <div class="conn-bar hidden" id="connBar">⚠️ 连接中断，正在重连…</div>
+
+    <div class="table-stage">
+      <div class="felt">
+        <div class="table-center">
+          <div class="pot-chip" id="potChip">底池 0</div>
+          <div class="stage-info" id="stageInfo"></div>
+          <div class="stage-result hidden" id="stageResult"></div>
+        </div>
+        <div class="seats" id="seats"></div>
+      </div>
+    </div>
+
+    <div class="you-bar hidden" id="youBar"></div>
+
+    <div class="controls" id="controls"></div>
+
+    <div class="bottom-docks">
+      <div class="dock log-dock">
+        <div class="dock-title">牌局记录</div>
+        <div class="log" id="log"></div>
+      </div>
+      <div class="dock chat-dock hidden" id="chatDock">
+        <div class="dock-title">聊天 <span id="specStrip" class="spec-strip"></span></div>
+        <div class="chat-msgs" id="chatMsgs"></div>
+        <div class="phrase-bar" id="phraseBar"></div>
+        <div class="emote-bar" id="emoteBar"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" maxlength="200" placeholder="说点什么…（回车发送）" />
+          <button id="chatSend" class="primary small">发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="zjh-footer">
+    <span class="muted">仅供娱乐与学习，请勿用于赌博。</span>
+  </footer>
+
+  <!-- 比牌弹窗 -->
+  <div class="modal hidden" id="compareModal">
+    <div class="modal-card">
+      <h3>选择比牌对手</h3>
+      <div class="compare-targets" id="compareTargets"></div>
+      <button class="ghost" id="compareCancel">取消</button>
+    </div>
+  </div>
+
+  <!-- 加注弹窗 -->
+  <div class="modal hidden" id="raiseModal">
+    <div class="modal-card">
+      <h3>加注到</h3>
+      <input type="range" id="raiseRange" />
+      <div class="raise-value"><span id="raiseValue">0</span>（投入 <span id="raiseCost">0</span>）</div>
+      <div class="modal-actions">
+        <button class="ghost" id="raiseCancel">取消</button>
+        <button class="primary" id="raiseConfirm">确认加注</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录 / 注册弹窗 -->
+  <div class="modal hidden" id="authModal">
+    <div class="modal-card">
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">登录</button>
+        <button class="auth-tab" data-tab="register">注册</button>
+      </div>
+      <input id="authUsername" type="text" placeholder="用户名（2-16 位，可中文）" autocomplete="username" />
+      <input id="authPassword" type="password" placeholder="密码（6-64 位）" autocomplete="current-password" />
+      <div id="authError" class="auth-error"></div>
+      <div class="modal-actions">
+        <button class="ghost" id="authCancel">取消</button>
+        <button class="primary" id="authSubmit">登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建房间弹窗 -->
+  <div class="modal hidden" id="createModal">
+    <div class="modal-card">
+      <h3>创建房间</h3>
+      <input id="roomNameInput" type="text" placeholder="房间名称（可选）" maxlength="24" />
+      <input id="roomPwInput" type="text" placeholder="房间密码（可选，留空为公开房）" maxlength="16" />
+      <div class="setup-grid">
+        <label>座位上限
+          <select id="cMaxSeats">
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="6" selected>6</option>
+          </select>
+        </label>
+        <label>底注
+          <select id="cAnte">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </label>
+        <label>初始筹码
+          <select id="cStartChips">
+            <option value="500">500</option>
+            <option value="1000" selected>1000</option>
+            <option value="2000">2000</option>
+          </select>
+        </label>
+        <label>单注封顶
+          <select id="cMaxStake">
+            <option value="40">40</option>
+            <option value="80" selected>80</option>
+            <option value="160">160</option>
+          </select>
+        </label>
+        <label>机器人难度
+          <select id="cBotDifficulty">
+            <option value="easy">新手</option>
+            <option value="normal" selected>普通</option>
+            <option value="hard">高手</option>
+          </select>
+        </label>
+      </div>
+      <div id="createError" class="auth-error"></div>
+      <div class="modal-actions">
+        <button class="ghost" id="createCancel">取消</button>
+        <button class="primary" id="createConfirm">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 加好友弹窗 -->
+  <div class="modal hidden" id="addFriendModal">
+    <div class="modal-card">
+      <h3>添加好友</h3>
+      <input id="friendNameInput" type="text" placeholder="对方用户名" maxlength="16" />
+      <div id="addFriendError" class="auth-error"></div>
+      <div class="modal-actions">
+        <button class="ghost" id="addFriendCancel">取消</button>
+        <button class="primary" id="addFriendConfirm">发送申请</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 个人资料 / 头像弹窗 -->
+  <div class="modal hidden" id="profileModal">
+    <div class="modal-card">
+      <h3>个人资料</h3>
+      <div id="profileStats" class="profile-stats"></div>
+      <div class="avatar-label">最近对局</div>
+      <div id="profileRecent" class="profile-recent"></div>
+      <div class="avatar-label">选择头像</div>
+      <div id="avatarGrid" class="avatar-grid"></div>
+      <button class="ghost" id="profileClose">关闭</button>
+    </div>
+  </div>
+
+  <!-- 本局战报弹窗 -->
+  <div class="modal hidden" id="historyModal">
+    <div class="modal-card">
+      <h3>📜 本局战报</h3>
+      <div id="historyList" class="history-list"></div>
+      <button class="ghost" id="historyClose">关闭</button>
+    </div>
+  </div>
+
+  <!-- 排行榜弹窗 -->
+  <div class="modal hidden" id="leaderboardModal">
+    <div class="modal-card">
+      <h3>🏆 金币排行榜</h3>
+      <div id="leaderboardList" class="leaderboard-list"></div>
+      <button class="ghost" id="leaderboardClose">关闭</button>
+    </div>
+  </div>
+
+  <!-- 邀请好友弹窗 -->
+  <div class="modal hidden" id="inviteModal">
+    <div class="modal-card">
+      <h3>邀请好友进房</h3>
+      <div id="inviteList" class="invite-list"></div>
+      <button class="ghost" id="inviteCancel">关闭</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
