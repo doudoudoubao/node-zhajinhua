@@ -203,23 +203,27 @@ select, .modal-card input {
 
 .table-stage { display: flex; justify-content: center; }
 .felt {
-  position: relative; width: 100%; max-width: 760px; aspect-ratio: 16 / 10;
-  border-radius: 46% / 50%;
+  position: relative; width: 100%; max-width: 740px; aspect-ratio: 20 / 9;
+  border-radius: 48% / 50%;
   background:
-    radial-gradient(circle at 50% 42%, #2a7d52, #176038 70%, #0f4628 100%);
-  border: 10px solid #5b3a1e;
-  box-shadow: inset 0 0 60px rgba(0,0,0,0.45), 0 14px 40px rgba(0,0,0,0.5);
-  margin: 6px 0 12px;
+    radial-gradient(ellipse 72% 82% at 50% 40%, #2f8a5b, #1c6b41 56%, #0f4a2c 100%);
+  border: 12px solid #6b4524;
+  box-shadow:
+    inset 0 0 0 3px rgba(242,200,75,0.22),
+    inset 0 0 70px rgba(0,0,0,0.5),
+    0 16px 46px rgba(0,0,0,0.55);
+  margin: 4px 0 6px;
 }
 
 .table-center {
-  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
-  text-align: center; pointer-events: none; width: 60%;
+  position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none; width: 64%;
 }
 .pot-chip {
-  display: inline-block; background: rgba(0,0,0,0.4); color: var(--gold);
-  border: 1px solid rgba(242,200,75,0.4); border-radius: 999px;
-  padding: 6px 18px; font-weight: 800; font-size: clamp(14px, 2.4vw, 20px);
+  display: inline-block; background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.35));
+  color: var(--gold); border: 1px solid rgba(242,200,75,0.5); border-radius: 999px;
+  padding: 7px 22px; font-weight: 800; font-size: clamp(15px, 2.6vw, 22px);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.4);
 }
 .stage-info { margin-top: 8px; font-size: 12px; color: #cfe7d6; }
 .stage-result {
@@ -228,11 +232,13 @@ select, .modal-card input {
 }
 
 .seats { position: absolute; inset: 0; }
-.seat-slot { position: absolute; transform: translate(-50%, -50%); width: clamp(96px, 17vw, 132px); }
+.seat-slot { position: absolute; transform: translate(-50%, -50%); width: clamp(82px, 13vw, 116px); }
 
 .seat-card {
-  background: rgba(8, 18, 12, 0.86); border: 1px solid var(--panel-border);
-  border-radius: 12px; padding: 7px 8px 8px; text-align: center; transition: all 0.18s;
+  background: linear-gradient(180deg, rgba(14,28,20,0.92), rgba(6,14,10,0.92));
+  border: 1px solid var(--panel-border); border-radius: 14px;
+  padding: 8px 8px 9px; text-align: center; transition: all 0.18s;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
 }
 .seat-card.turn { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242,200,75,0.35); }
 .seat-card.folded { opacity: 0.45; filter: grayscale(0.5); }
@@ -273,12 +279,24 @@ select, .modal-card input {
 /* 倒计时圈 */
 .turn-ring { font-size: 11px; color: var(--gold); font-weight: 700; min-height: 14px; }
 .turn-ring.danger { color: var(--err); }
+/* 「你」的出牌倒计时更醒目 */
+.you-line .turn-ring {
+  font-size: 14px; padding: 2px 12px; border-radius: 999px;
+  background: rgba(242,200,75,0.16); border: 1px solid rgba(242,200,75,0.5);
+}
+.you-line .turn-ring.danger {
+  background: rgba(248,113,113,0.2); border-color: rgba(248,113,113,0.6);
+  animation: tick-pulse 0.5s infinite;
+}
+@keyframes tick-pulse { 50% { opacity: 0.45; } }
 
 /* 扑克牌 */
 .card {
-  width: 24px; height: 34px; border-radius: 4px; background: #fbfbf7; color: #1a1a1a;
+  width: 26px; height: 36px; border-radius: 5px;
+  background: linear-gradient(160deg, #ffffff, #eef1ee); color: #1a1a1a;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-weight: 800; box-shadow: 0 1px 3px rgba(0,0,0,0.35); line-height: 1;
+  font-weight: 800; box-shadow: 0 2px 5px rgba(0,0,0,0.4); line-height: 1;
+  border: 1px solid rgba(0,0,0,0.08);
 }
 .card.red { color: var(--card-red); }
 .card .c-rank { font-size: 12px; }
@@ -291,14 +309,45 @@ select, .modal-card input {
 .seat-card.you .seat-cards .card .c-rank { font-size: 15px; }
 .seat-card.you .seat-cards .card .c-suit { font-size: 13px; }
 
+/* 「你」专属区（牌桌下方，含大牌，避免与对手环和按钮重叠） */
+.you-bar { display: flex; justify-content: center; margin: 2px 0 10px; }
+.you-card {
+  display: flex; align-items: center; gap: 14px; width: 100%; max-width: 560px;
+  background: linear-gradient(135deg, rgba(47,191,113,0.16), rgba(8,18,12,0.92));
+  border: 1px solid var(--accent); border-radius: 16px; padding: 10px 18px;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.4); transition: all 0.18s;
+}
+.you-card.turn { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), 0 0 26px rgba(242,200,75,0.4); }
+.you-card.winner { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 26px rgba(47,191,113,0.5); }
+.you-card.folded { opacity: 0.6; }
+.you-avatar {
+  width: 54px; height: 54px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center; font-size: 30px;
+  background: linear-gradient(135deg, #2a7d52, #176038); border: 2px solid rgba(255,255,255,0.2);
+}
+.you-info { flex: 1; min-width: 0; }
+.you-name { font-weight: 800; font-size: 16px; }
+.you-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; margin-top: 3px; }
+.you-chips { color: var(--gold); font-weight: 700; }
+.you-status.look { color: #8fd3ff; }
+.you-status.blind { color: #d8b3ff; }
+.you-bet { color: var(--gold); }
+.you-cards { display: flex; gap: 5px; }
+.you-cards .card { width: 42px; height: 58px; border-radius: 7px; }
+.you-cards .card .c-rank { font-size: 19px; }
+.you-cards .card .c-suit { font-size: 16px; }
+.you-handname { color: var(--accent); font-weight: 700; font-size: 13px; white-space: nowrap; }
+
 /* 操作区 */
 .controls {
   display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-  min-height: 46px; margin: 6px 0 12px;
+  min-height: 48px; margin: 2px 0 14px;
 }
+.controls button { padding: 13px 22px; font-size: 15px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.32); }
+.controls button:hover:not(:disabled) { transform: translateY(-1px); }
 .controls .turn-hint, .controls .your-turn { align-self: center; }
 .controls .turn-hint { color: var(--muted); }
-.controls .your-turn { color: var(--gold); font-weight: 700; }
+.controls .your-turn { color: var(--gold); font-weight: 700; font-size: 15px; }
 
 /* 底部记录 / 聊天 */
 .bottom-docks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

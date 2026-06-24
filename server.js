@@ -4,6 +4,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const { convert, TARGETS } = require('./src/convert');
+const U = require('./src/util');
 const zjhStore = require('./src/zhajinhua/store');
 const rooms = require('./src/zhajinhua/rooms');
 const userStore = require('./src/auth/store');
@@ -49,6 +51,75 @@ function serveStatic(res, urlPath) {
   });
 }
 
+/** 拉取远程订阅内容（支持多个 url，用 | 分隔）。 */
+async function fetchSubscriptions(urlParam) {
+  if (!urlParam) return '';
+  // url 参数本身可能被 base64 编码
+  let value = urlParam;
+  if (U.looksLikeBase64(value) && !/^https?:\/\//i.test(value)) {
+    const decoded = U.b64decode(value);
+    if (/^https?:\/\//i.test(decoded) || /:\/\//.test(decoded)) value = decoded;
+  }
+  const parts = value.split('|').map((s) => s.trim()).filter(Boolean);
+  const contents = [];
+  for (const p of parts) {
+    if (/^https?:\/\//i.test(p)) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        const resp = await fetch(p, {
+          headers: { 'User-Agent': 'clash-verge/v1.6.0' },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        const text = await resp.text();
+        contents.push(text);
+      } catch (e) {
+        throw new Error(`拉取订阅失败 (${p.slice(0, 40)}): ${e.message}`);
+      }
+    } else {
+      // 直接是节点链接
+      contents.push(p);
+    }
+  }
+  return contents.join('\n');
+}
+
+async function handleSub(req, res, params) {
+  const target = params.get('target') || 'clash';
+  if (!TARGETS[target]) return send(res, 400, '不支持的目标格式: ' + target);
+  const urlParam = params.get('url');
+  const inlineInput = params.get('input');
+
+  let raw = '';
+  try {
+    if (urlParam) raw += (await fetchSubscriptions(urlParam)) + '\n';
+  } catch (e) {
+    return send(res, 502, e.message);
+  }
+  if (inlineInput) raw += U.safeDecode(inlineInput);
+
+  if (!raw.trim()) return send(res, 400, '未提供订阅内容（url 或 input 参数）');
+
+  try {
+    const result = convert(raw, target, {
+      includeKeyword: params.get('include') || undefined,
+      excludeKeyword: params.get('exclude') || undefined,
+      prefix: params.get('prefix') || undefined,
+    });
+    res.writeHead(200, {
+      'Content-Type': result.contentType,
+      'Access-Control-Allow-Origin': '*',
+      'Subscription-Userinfo': `upload=0; download=0; total=0; expire=0`,
+      'Profile-Update-Interval': '24',
+      'Content-Disposition': `attachment; filename="${target}.${target === 'singbox' ? 'json' : target === 'clash' ? 'yaml' : 'conf'}"`,
+    });
+    res.end(result.output);
+  } catch (e) {
+    send(res, 500, '转换失败: ' + e.message);
+  }
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -65,6 +136,36 @@ function readBody(req) {
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
+}
+
+async function handleApiConvert(req, res) {
+  let payload;
+  try {
+    const body = await readBody(req);
+    payload = JSON.parse(body || '{}');
+  } catch (e) {
+    return send(res, 400, JSON.stringify({ error: '无效的 JSON 请求体' }), 'application/json; charset=utf-8');
+  }
+
+  const target = payload.target || 'clash';
+  let raw = '';
+  try {
+    if (payload.url) raw += (await fetchSubscriptions(payload.url)) + '\n';
+  } catch (e) {
+    return send(res, 502, JSON.stringify({ error: e.message }), 'application/json; charset=utf-8');
+  }
+  if (payload.input) raw += payload.input;
+
+  if (!raw.trim()) {
+    return send(res, 400, JSON.stringify({ error: '请提供节点链接或订阅地址' }), 'application/json; charset=utf-8');
+  }
+
+  try {
+    const result = convert(raw, target, payload.options || {});
+    send(res, 200, JSON.stringify(result), 'application/json; charset=utf-8');
+  } catch (e) {
+    send(res, 500, JSON.stringify({ error: e.message }), 'application/json; charset=utf-8');
+  }
 }
 
 function sendJson(res, status, obj) {
@@ -153,8 +254,54 @@ async function handleLogin(req, res) {
   try { p = await readJson(req); } catch (e) { return sendJson(res, 400, { error: '无效的请求体' }); }
   const user = userStore.verify(p.username, p.password);
   if (!user) return sendJson(res, 401, { error: '用户名或密码错误' });
+  if (userStore.isBanned(user.id)) return sendJson(res, 403, { error: '该账号已被封禁' });
   const sid = sessions.create(user);
   sendJsonWithCookie(res, 200, { user }, sessions.setCookieHeader(sid));
+}
+
+// ===== 后台管理 =====
+
+function requireAdmin(req, res) {
+  const user = currentUser(req);
+  if (!user) { sendJson(res, 401, { error: '请先登录' }); return null; }
+  if (!userStore.isAdmin(user.id)) { sendJson(res, 403, { error: '无管理员权限' }); return null; }
+  return user;
+}
+
+function handleAdminUsers(req, res) {
+  if (!requireAdmin(req, res)) return;
+  sendJson(res, 200, {
+    users: userStore.adminListUsers(),
+    stats: userStore.adminStats(),
+    online: Array.from(presence.onlineIds()),
+  });
+}
+
+async function handleAdminUser(req, res) {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  let p = {};
+  try { p = await readJson(req); } catch (e) { /* ignore */ }
+  const id = parseInt(p.id, 10);
+  if (!id) return sendJson(res, 400, { error: '缺少用户 id' });
+  try {
+    switch (p.action) {
+      case 'setCoins': userStore.adminSetCoins(id, p.value); break;
+      case 'adjustCoins': userStore.adminAdjustCoins(id, p.value); break;
+      case 'ban': userStore.adminSetBanned(id, true); break;
+      case 'unban': userStore.adminSetBanned(id, false); break;
+      case 'setAdmin': userStore.adminSetAdmin(id, !!p.value); break;
+      case 'resetPassword': userStore.adminResetPassword(id, p.value); break;
+      case 'delete':
+        if (id === admin.id) return sendJson(res, 400, { error: '不能删除自己的账号' });
+        userStore.adminDeleteUser(id);
+        break;
+      default: return sendJson(res, 400, { error: '未知操作' });
+    }
+    sendJson(res, 200, { ok: true });
+  } catch (e) {
+    sendJson(res, 400, { error: e.message });
+  }
 }
 
 function handleLogout(req, res) {
@@ -389,6 +536,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, '');
 
   try {
+    if (req.method === 'GET' && pathname === '/sub') {
+      return await handleSub(req, res, parsed.searchParams);
+    }
+    if (req.method === 'POST' && pathname === '/api/convert') {
+      return await handleApiConvert(req, res);
+    }
     if (req.method === 'POST' && pathname === '/zhajinhua/api/new') {
       return await handleZjhNew(req, res);
     }
@@ -410,6 +563,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && pathname === '/zhajinhua/api/profile/avatar') return await handleSetAvatar(req, res);
     if (req.method === 'POST' && pathname === '/zhajinhua/api/checkin') return handleCheckin(req, res);
     if (req.method === 'GET' && pathname === '/zhajinhua/api/leaderboard') return handleLeaderboard(req, res);
+
+    // 后台管理（仅管理员）
+    if (req.method === 'GET' && pathname === '/zhajinhua/api/admin/users') return handleAdminUsers(req, res);
+    if (req.method === 'POST' && pathname === '/zhajinhua/api/admin/user') return await handleAdminUser(req, res);
 
     // 联机大厅与房间
     if (req.method === 'GET' && pathname === '/zhajinhua/api/rooms') return handleRoomList(req, res);
@@ -435,11 +592,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && pathname === '/zhajinhua/api/friends/remove') return await handleFriendRemove(req, res);
     if (req.method === 'POST' && pathname === '/zhajinhua/api/friends/invite') return await handleInvite(req, res);
     if (req.method === 'GET' && pathname === '/zhajinhua/api/notify/stream') return handleNotifyStream(req, res);
+    if (req.method === 'GET' && pathname === '/api/targets') {
+      const list = Object.entries(TARGETS).map(([k, v]) => ({ key: k, label: v.label }));
+      return send(res, 200, JSON.stringify(list), 'application/json; charset=utf-8');
+    }
     if (req.method === 'GET' && pathname === '/health') {
       return send(res, 200, JSON.stringify({ ok: true }), 'application/json; charset=utf-8');
     }
-    // 根路径与 /zhajinhua 直接进入游戏
-    if (req.method === 'GET' && (pathname === '/' || pathname === '/zhajinhua')) {
+    if (req.method === 'GET' && pathname === '/zhajinhua') {
       res.writeHead(302, { Location: '/zhajinhua/' });
       return res.end();
     }
@@ -453,8 +613,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`炸金花服务已启动: http://${HOST}:${PORT}`);
-  console.log(`游戏入口:  http://localhost:${PORT}/`);
+  console.log(`订阅转换服务已启动: http://${HOST}:${PORT}`);
+  console.log(`网页界面:  http://localhost:${PORT}/`);
+  console.log(`订阅端点:  http://localhost:${PORT}/sub?url=<订阅地址>&target=clash`);
 });
 
 module.exports = server;

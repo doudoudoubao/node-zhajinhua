@@ -108,13 +108,16 @@ function renderAuthArea() {
     const coins = myProfile ? myProfile.coins : 0;
     const av = myProfile ? myProfile.avatar : '🙂';
     const canCheckin = myProfile && !myProfile.checkedInToday;
+    const adminLink = (myProfile && myProfile.isAdmin) ? '<a class="link" id="adminLink" title="管理后台">🛠 后台</a>' : '';
     el.innerHTML = `
       <span class="coins">💰 ${coins}</span>
       <button class="checkin" id="checkinBtn" ${canCheckin ? '' : 'disabled'}>${canCheckin ? '签到' : '已签到'}</button>
       <span class="who"><span class="av" id="avatarBtn" title="个人资料">${av}</span> ${escapeHtml(me.username)}</span>
+      ${adminLink}
       <a class="link" id="logoutLink">退出</a>`;
     $('checkinBtn').addEventListener('click', doCheckin);
     $('avatarBtn').addEventListener('click', openProfile);
+    if (myProfile && myProfile.isAdmin) $('adminLink').addEventListener('click', () => { location.href = '/zhajinhua/admin.html'; });
     $('logoutLink').addEventListener('click', logout);
   } else {
     el.innerHTML = `<button class="ghost small" id="loginBtn">登录 / 注册</button>`;
@@ -263,11 +266,20 @@ function enterLobby() {
   showScreen('lobby');
   const needLogin = !me;
   $('lobbyAuthHint').classList.toggle('hidden', !needLogin);
-  $('createRoomBtn').disabled = needLogin;
-  $('joinById').classList.toggle('hidden', needLogin);
-  $('friendsPanel').classList.toggle('hidden', needLogin);
-  $('roomList').classList.toggle('hidden', needLogin);
-  if (!needLogin) { refreshRooms(); refreshFriends(); startLobbyPolling(); }
+  // 创建/加入按钮始终可点：未登录时点击会弹出登录框，避免“按钮变灰=不可用”的困惑
+  $('createRoomBtn').disabled = false;
+  $('joinById').classList.remove('hidden');
+  $('friendsPanel').classList.toggle('hidden', needLogin); // 好友需登录
+  $('roomList').classList.remove('hidden');                 // 房间列表公开可浏览
+  refreshRooms();
+  if (needLogin) {
+    stopLobbyPolling();
+    $('lobbyAuthHint').innerHTML = '登录后即可创建房间、加好友、保存金币与战绩 👉 <button class="primary small" id="lobbyLoginBtn">登录 / 注册</button>';
+    $('lobbyLoginBtn').addEventListener('click', () => openAuth('login'));
+  } else {
+    refreshFriends();
+    startLobbyPolling();
+  }
 }
 function startLobbyPolling() { stopLobbyPolling(); lobbyTimer = setInterval(() => { refreshRooms(); refreshFriends(); }, 5000); }
 function stopLobbyPolling() { if (lobbyTimer) clearInterval(lobbyTimer); lobbyTimer = null; }
@@ -433,9 +445,11 @@ function cardHtml(c) {
 }
 function hiddenCards(n) { let s = ''; for (let i = 0; i < n; i++) s += cardHtml(null); return s; }
 
-function slotXY(i, total) {
-  const ang = Math.PI / 2 + i * (2 * Math.PI / total); // 底部起，顺时针
-  return { x: 50 + 48 * Math.cos(ang), y: 50 + 42 * Math.sin(ang) };
+function slotXY(i, count) {
+  // 对手均匀分布在牌桌「上半椭圆」：从左(180°) 经顶(270°) 到右(360°)
+  const t = count <= 1 ? 0.5 : i / (count - 1);
+  const ang = Math.PI * (1 + t);
+  return { x: 50 + 46 * Math.cos(ang), y: 44 + 40 * Math.sin(ang) };
 }
 
 function render(v) {
@@ -457,6 +471,7 @@ function render(v) {
   if (showResult) sr.textContent = v.result;
 
   renderSeatsRing(v, online);
+  renderYouBar(v, online);
   renderControls(v, online, inLobby);
 
   // 聊天 / 观战（仅联机）
@@ -554,19 +569,19 @@ function openHistory() {
 
 function renderSeatsRing(v, online) {
   const maxSeats = online ? v.room.maxSeats : v.players.length;
-  const mySeat = v.viewerId;
-  const occ = v.players.slice();
-  let ordered = mySeat >= 0 ? occ.slice(mySeat).concat(occ.slice(0, mySeat)) : occ.slice();
-  const slots = ordered.slice();
-  while (slots.length < maxSeats) slots.push(null);
+  // 「你」单独显示在牌桌下方，环上只放其他玩家 + 空座
+  const others = v.players.filter((p) => !p.isYou);
+  const emptyCount = Math.max(0, maxSeats - v.players.length);
+  const slots = others.concat(new Array(emptyCount).fill(null));
 
   const seatMeta = {};
   if (online) for (const s of v.room.seats) seatMeta[s.seat] = s;
 
   const wrap = $('seats');
   wrap.innerHTML = '';
+  const n = Math.max(slots.length, 1);
   slots.forEach((p, i) => {
-    const pos = slotXY(i, slots.length);
+    const pos = slotXY(i, n);
     const el = document.createElement('div');
     el.className = 'seat-slot';
     el.style.left = pos.x + '%';
@@ -580,6 +595,49 @@ function renderSeatsRing(v, online) {
     e.stopPropagation();
     if (confirm('确定把该玩家请出房间？')) postJSON('/zhajinhua/api/room/kick', { roomId: currentRoomId, seat: +b.dataset.kick }).then((r) => { if (r.error) flash(r.error); });
   }));
+}
+
+/** 「你」单独显示在牌桌下方（含大牌），避免与对手环和操作按钮重叠。 */
+function renderYouBar(v, online) {
+  const bar = $('youBar');
+  const me = v.players.find((p) => p.isYou);
+  if (!me) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  const meta = online ? (v.room.seats.find((s) => s.isYou) || {}) : {};
+
+  const cls = ['you-card'];
+  if (me.isTurn) cls.push('turn');
+  if (me.id === v.winnerId) cls.push('winner');
+  if (me.folded) cls.push('folded');
+
+  let status;
+  if (!me.inHand) status = '本手轮空';
+  else if (me.folded) status = '已弃牌';
+  else if (me.looked) status = '已看牌（跟注/比牌 ×2）';
+  else status = '闷牌中';
+
+  const cards = me.inHand
+    ? `<div class="you-cards">${me.cards ? me.cards.map(cardHtml).join('') : hiddenCards(3)}</div>`
+    : '<div class="you-cards"></div>';
+  const ring = me.isTurn && v.room && v.room.turnDeadline ? '<span class="turn-ring" id="activeTurnRing"></span>' : '';
+  const handName = me.handName ? `<span class="you-handname">【${me.handName}】</span>` : '';
+  const crown = meta && meta.isHost ? ' 👑' : '';
+
+  bar.className = 'you-bar';
+  bar.innerHTML = `
+    <div class="${cls.join(' ')}">
+      <div class="you-avatar">${escapeHtml(me.avatar || '🙂')}</div>
+      <div class="you-info">
+        <div class="you-name">你${crown}</div>
+        <div class="you-line">
+          <span class="you-chips">🪙 ${me.chips}</span>
+          <span class="you-status ${me.looked ? 'look' : 'blind'}">${status}</span>
+          ${me.bet > 0 ? `<span class="you-bet">投 ${me.bet}</span>` : ''}
+          ${ring}
+        </div>
+      </div>
+      ${cards}${handName}
+    </div>`;
 }
 
 function seatCardHtml(p, v, meta) {
@@ -670,7 +728,14 @@ function appendGameButtons(c, a, v) {
   if (a.canLook) c.appendChild(btn('👁 看牌', 'gold', () => doAction('look')));
   if (a.canCall) c.appendChild(btn(`✅ 跟注 ${a.callCost}`, 'primary', () => doAction('call')));
   if (a.canRaise) c.appendChild(btn('⬆️ 加注', 'ghost', () => openRaise(v)));
-  if (a.canCompare) c.appendChild(btn(`⚔️ 比牌 ${a.compareCost}`, 'ghost', () => openCompare(v)));
+  if (a.canCompare) {
+    // 开牌：直接与下一位在场对手亮牌定胜负（快捷比牌）
+    c.appendChild(btn(`🎴 开牌 ${a.compareCost}`, 'gold', () => doAction('compare')));
+    // 比牌：人多时可手动选择对手
+    if (a.compareTargets && a.compareTargets.length > 1) {
+      c.appendChild(btn(`⚔️ 比牌 ${a.compareCost}`, 'ghost', () => openCompare(v)));
+    }
+  }
   if (a.canFold) c.appendChild(btn('🏳️ 弃牌', 'warn', () => doAction('fold')));
 }
 

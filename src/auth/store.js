@@ -73,6 +73,7 @@ function register(username, password) {
     throw new Error('该用户名已被注册');
   }
   const salt = crypto.randomBytes(16).toString('hex');
+  const isFirst = users.size === 0; // 首个注册用户自动成为管理员
   const user = {
     id: nextId++,
     username,
@@ -86,6 +87,8 @@ function register(username, password) {
     avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)],
     lastCheckin: 0,
     stats: { games: 0, wins: 0, net: 0 },
+    banned: false,
+    admin: isFirst,
   };
   users.set(user.id, user);
   byName.set(lower, user.id);
@@ -106,6 +109,8 @@ function rawById(id) {
     if (!u.stats) u.stats = { games: 0, wins: 0, net: 0 };
     if (typeof u.lastCheckin !== 'number') u.lastCheckin = 0;
     if (!Array.isArray(u.recentGames)) u.recentGames = [];
+    if (typeof u.banned !== 'boolean') u.banned = false;
+    if (typeof u.admin !== 'boolean') u.admin = false;
   }
   return u || null;
 }
@@ -227,6 +232,7 @@ function getProfile(id) {
     stats: { ...u.stats }, checkedInToday: u.lastCheckin === dateNum(),
     avatars: AVATARS.slice(),
     recent: u.recentGames.slice(-20).reverse(),
+    isAdmin: isAdmin(u.id),
   };
 }
 
@@ -301,9 +307,109 @@ function leaderboard(limit = 20) {
     .slice(0, limit);
 }
 
+// ---- 后台管理 ----
+
+/** 是否管理员：账户标记 admin，或环境变量 ZJH_ADMIN 指定的用户名。 */
+function isAdmin(id) {
+  const u = rawById(id);
+  if (!u) return false;
+  if (u.admin) return true;
+  const env = (process.env.ZJH_ADMIN || '').trim().toLowerCase();
+  return !!env && u.lower === env;
+}
+
+function isBanned(id) {
+  const u = rawById(id);
+  return u ? !!u.banned : false;
+}
+
+/** 全部用户的管理视图（不含密码哈希）。 */
+function adminListUsers() {
+  ensureLoaded();
+  return Array.from(users.values()).map((u) => ({
+    id: u.id,
+    username: u.username,
+    avatar: u.avatar || AVATARS[0],
+    coins: u.coins || 0,
+    banned: !!u.banned,
+    admin: isAdmin(u.id),
+    createdAt: u.createdAt,
+    friends: (u.friends || []).length,
+    stats: u.stats || { games: 0, wins: 0, net: 0 },
+    recent: (u.recentGames || []).slice(-5).reverse(),
+  })).sort((a, b) => a.id - b.id);
+}
+
+function adminSetCoins(id, coins) {
+  const u = rawById(id);
+  if (!u) throw new Error('用户不存在');
+  u.coins = Math.max(0, Math.min(1e12, Math.round(Number(coins) || 0)));
+  persist();
+  return u.coins;
+}
+
+function adminAdjustCoins(id, delta) {
+  const u = rawById(id);
+  if (!u) throw new Error('用户不存在');
+  u.coins = Math.max(0, (u.coins || 0) + Math.round(Number(delta) || 0));
+  persist();
+  return u.coins;
+}
+
+function adminSetBanned(id, banned) {
+  const u = rawById(id);
+  if (!u) throw new Error('用户不存在');
+  u.banned = !!banned;
+  persist();
+  return u.banned;
+}
+
+function adminSetAdmin(id, on) {
+  const u = rawById(id);
+  if (!u) throw new Error('用户不存在');
+  u.admin = !!on;
+  persist();
+  return u.admin;
+}
+
+function adminResetPassword(id, newPassword) {
+  const u = rawById(id);
+  if (!u) throw new Error('用户不存在');
+  newPassword = String(newPassword || '');
+  if (newPassword.length < 6 || newPassword.length > 64) throw new Error('密码长度需为 6-64 位');
+  u.salt = crypto.randomBytes(16).toString('hex');
+  u.hash = hashPassword(newPassword, u.salt);
+  persist();
+}
+
+function adminDeleteUser(id) {
+  const u = users.get(id);
+  if (!u) return;
+  for (const o of users.values()) {
+    if (Array.isArray(o.friends)) o.friends = o.friends.filter((x) => x !== id);
+    if (Array.isArray(o.requests)) o.requests = o.requests.filter((x) => x !== id);
+  }
+  byName.delete(u.lower);
+  users.delete(id);
+  persist();
+}
+
+function adminStats() {
+  ensureLoaded();
+  let totalCoins = 0, banned = 0, admins = 0;
+  for (const u of users.values()) {
+    totalCoins += u.coins || 0;
+    if (u.banned) banned += 1;
+    if (isAdmin(u.id)) admins += 1;
+  }
+  return { users: users.size, totalCoins, banned, admins };
+}
+
 module.exports = {
   register, verify, getById, count, USERS_FILE, DATA_DIR, AVATARS,
   findByUsername, sendFriendRequest, acceptFriend, declineFriend, removeFriend,
   friendIds, listFriends, listRequests,
   getProfile, setAvatar, balance, take, give, checkin, recordResult, leaderboard,
+  isAdmin, isBanned, adminListUsers, adminSetCoins, adminAdjustCoins,
+  adminSetBanned, adminSetAdmin, adminResetPassword, adminDeleteUser, adminStats,
 };

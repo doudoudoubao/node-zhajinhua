@@ -39,8 +39,8 @@ class Room {
 
     // 编排参数
     this.botDelay = 1200;
-    this.turnMs = clampInt(opts.turnMs, 30000, 8000, 120000);
-    this.discTurnMs = 8000; // 掉线者更快自动弃牌
+    this.turnMs = clampInt(opts.turnMs, 8000, 5000, 120000); // 默认 8 秒思考时间
+    this.discTurnMs = 4000; // 掉线者更快自动弃牌
     this.nextHandDelay = 4500;
 
     this.game = null; // BettingGame 实例（开局后创建）
